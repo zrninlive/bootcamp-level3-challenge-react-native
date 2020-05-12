@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
 } from 'react';
 
 import AsyncStorage from '@react-native-community/async-storage';
@@ -25,33 +26,91 @@ interface CartContext {
 
 const CartContext = createContext<CartContext | null>(null);
 
+async function cartSaveStorage(products: Product[]): Promise<void> {
+  await AsyncStorage.setItem('@GoMarketPlace:cart', JSON.stringify(products));
+}
+
 const CartProvider: React.FC = ({ children }) => {
   const [products, setProducts] = useState<Product[]>([]);
 
   useEffect(() => {
     async function loadProducts(): Promise<void> {
-      // TODO LOAD ITEMS FROM ASYNC STORAGE
+      const productsCart = await AsyncStorage.getItem('@GoMarketPlace:cart');
+      setProducts(JSON.parse(productsCart || '[]'));
     }
 
     loadProducts();
   }, []);
 
-  const addToCart = useCallback(async product => {
-    // TODO ADD A NEW ITEM TO THE CART
-  }, []);
+  const addToCart = useCallback(
+    async (product: Product) => {
+      const productAlreadyOnCart = products.find(
+        productCart => product.id === productCart.id,
+      );
 
-  const increment = useCallback(async id => {
-    // TODO INCREMENTS A PRODUCT QUANTITY IN THE CART
-  }, []);
+      if (productAlreadyOnCart) {
+        const productsUpdated = products.map(productCart => {
+          if (productCart.id === product.id) {
+            return { ...productCart, quantity: productCart.quantity + 1 };
+          }
 
-  const decrement = useCallback(async id => {
-    // TODO DECREMENTS A PRODUCT QUANTITY IN THE CART
-  }, []);
+          return productCart;
+        });
 
-  const value = React.useMemo(
-    () => ({ addToCart, increment, decrement, products }),
-    [products, addToCart, increment, decrement],
+        cartSaveStorage(productsUpdated);
+        setProducts(productsUpdated);
+        return;
+      }
+
+      const productsUpdated = [...products, { ...product, quantity: 1 }];
+
+      cartSaveStorage(productsUpdated);
+      setProducts(productsUpdated);
+    },
+    [products],
   );
+
+  const increment = useCallback(
+    async id => {
+      const productsUpdated = products.map(product => {
+        if (product.id === id) {
+          return { ...product, quantity: product.quantity + 1 };
+        }
+
+        return product;
+      });
+
+      setProducts(productsUpdated);
+      cartSaveStorage(productsUpdated);
+    },
+    [products],
+  );
+
+  const decrement = useCallback(
+    async id => {
+      const productsUpdated = products
+        .map(product => {
+          if (product.id === id) {
+            return { ...product, quantity: product.quantity - 1 };
+          }
+
+          return product;
+        })
+        .filter(product => product.quantity > 0);
+
+      setProducts(productsUpdated);
+
+      cartSaveStorage(productsUpdated);
+    },
+    [products],
+  );
+
+  const value = useMemo(() => ({ addToCart, increment, decrement, products }), [
+    products,
+    addToCart,
+    increment,
+    decrement,
+  ]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 };
